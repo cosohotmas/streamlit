@@ -74,42 +74,50 @@ with col1:
 
 
 # ==========================================
-# COLUMN 2: LLM 기반 영화 추천 AI 챗봇 영역
+# COLUMN 2: LLM 기반 영화 추천 AI 챗봇 영역 (OpenRouter)
 # ==========================================
 with col2:
-    st.subheader("🤖 AI 영화 추천 챗봇")
-    st.caption("원하는 스타일의 영화나 대시보드 데이터에 대해 질문해 보세요.")
+    st.subheader("🤖 OpenRouter 영화 추천 챗봇")
+    st.caption("OpenRouter API를 통해 영화 추천을 받습니다.")
     
-    # OpenAI API 키 입력 받기 (사이드바 혹은 텍스트 입력창)
-    api_key = st.text_input("OpenAI API Key를 입력하세요", type="password")
-    
-    # 주피터와 달리 스트림릿은 새로고침 시 대화 기록이 날아가므로 Session State에 저장
+    # [왜] 주피터와 달리 스트림릿은 새로고침 시 대화 기록이 날아가므로 Session State에 저장
+    # Session State는 브라우저 세션 동안 데이터를 유지해주는 스트림릿의 메모리 기능
     if "messages" not in st.session_state:
         st.session_state.messages = [
-            {"role": "system", "content": "너는 영화 전문가야. 사용자의 기분이나 취향을 듣고 영화를 추천해 줘."}
+            {"role": "system", "content": "너는 영화 전문가야. 사용자의 기분이나 취향을 듣고 영화를 추천해 줘. 한국어로 답변해줘."}
         ]
 
-    # 기존 대화 기록 화면에 출력
+    # [왜] 기존 대화 기록을 화면에 출력 - 대화 흐름을 유지하기 위해
     for message in st.session_state.messages:
         if message["role"] != "system":
             with st.chat_message(message["role"]):
                 st.write(message["content"])
 
-    # 사용자 입력 창 만들기
+    # [왜] st.chat_input()은 채팅 형식의 입력창을 제공하는 스트림릿 전용 위젯
+    # 사용자가 입력하면 조건이 True가 되어 코드 블록 실행
     if user_input := st.chat_input("예시: 오늘 우울한데 통쾌한 액션 영화 추천해줘!"):
-        if not api_key:
-            st.error("API Key를 먼저 입력해야 대화를 시작할 수 있습니다.")
-        else:
-            # 1. 유저 메시지 화면 표시 및 저장
-            with st.chat_message("user"):
-                st.write(user_input)
-            st.session_state.messages.append({"role": "user", "content": user_input})
-            
-            # 2. OpenAI LLM 모델 호출
+        # 1. 유저 메시지 화면 표시 및 저장
+        with st.chat_message("user"):
+            st.write(user_input)
+        st.session_state.messages.append({"role": "user", "content": user_input})
+        
+        # 2. OpenRouter API 모델 호출
+        # [왜] st.spinner()로 로딩 표시 - AI 응답 생성은 1~10초가 걸릴 수 있음
+        # 사용자에게 "잠시만요"라는 피드백을 주어 좋은 UX 제공
+        # with 문 안의 코드가 실행되는 동안 스피너가 화면에 표시됨
+        with st.spinner("🤖 AI가 영화를 추천하는 중입니다... (잠시만요!)"):
             try:
-                client = OpenAI(api_key=api_key)
+                # [왜] OpenAI 호환 API를 사용 - OpenRouter도 OpenAI와 같은 API 형식 지원
+                # base_url을 OpenRouter API 주소로 변경
+                client = OpenAI(
+                    base_url="https://openrouter.ai/api/v1",
+                    api_key=st.secrets["OPENROUTER_KEY"]  # .streamlit/secrets.toml에 저장된 API 키
+                )
+                
+                # [왜] model 파라미터에 OpenRouter 모델명 입력
+                # meta-llama/llama-3.1-8b-instruct:free는 OpenRouter에서 제공하는 무료 모델
                 response = client.chat.completions.create(
-                    model="gpt-4o-mini", # 가성비가 가장 좋은 최신 기본 모델
+                    model="openrouter/free",
                     messages=st.session_state.messages
                 )
                 ai_response = response.choices[0].message.content
@@ -120,4 +128,6 @@ with col2:
                 st.session_state.messages.append({"role": "assistant", "content": ai_response})
                 
             except Exception as e:
-                st.error(f"에러가 발생했습니다: {e}")
+                # [왜] 예외 처리로 사용자 친화적인 에러 메시지 표시
+                # API 키가 없거나 네트워크 오류 등의 경우 대비
+                st.error(f"OpenRouter API 연결에 실패했습니다. API 키를 확인하거나 네트워크 연결을 확인하세요. 에러 내용: {e}")
